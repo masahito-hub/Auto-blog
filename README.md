@@ -4,65 +4,140 @@
 
 Drop a ZIP file containing Markdown + images, and get a WordPress draft post automatically—no manual copy-pasting required.
 
-## Features
+[![Code Quality](https://github.com/masahito-hub/Auto-blog/actions/workflows/lint.yml/badge.svg)](https://github.com/masahito-hub/Auto-blog/actions/workflows/lint.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-✅ **Zero-friction publishing**: Just drop a ZIP in `var/inbox/`  
-✅ **Markdown support**: Write in Markdown, publish as HTML  
-✅ **Image handling**: Automatic upload to WordPress media library  
-✅ **Robust retry logic**: Exponential backoff for failed jobs (1m → 6h)  
-✅ **Monitoring API**: `/health`, `/status`, `/retry` endpoints  
-✅ **Slack notifications**: Get notified on success/failure  
-✅ **Production-ready**: systemd service with auto-restart  
+---
 
-## Quick Start
-
-### Prerequisites
-- Python 3.11+
-- WordPress with Application Password enabled
-- (Optional) Slack webhook for notifications
-
-### Installation
+## ⚡ Quick Start
 
 ```bash
-# Clone repository
+# Clone and setup
 git clone https://github.com/masahito-hub/Auto-blog.git
 cd Auto-blog
-
-# Create virtual environment
 python3.11 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
+# Configure
 cp .env.example .env
 nano .env  # Add your WordPress credentials
+
+# Validate setup
+python scripts/check_config.py
+
+# Run
+python -m app.server
 ```
 
-### Configuration
+**Then drop a ZIP in `var/inbox/` and watch it publish!**
 
-Edit `.env` with your credentials:
+---
 
-```bash
-WP_BASE_URL=https://your-site.com
-WP_USER=your_username
-WP_APP_PASSWORD=xxxx xxxx xxxx xxxx  # From WordPress → Users → Profile
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+## ✨ Features
+
+### Currently Implemented (v0.1.0 - MVP Phase 1)
+
+✅ **Configuration System**
+- Pydantic-based validation
+- WordPress Application Password support
+- Environment variable management
+- Setup validation script
+
+✅ **File Monitoring**
+- Real-time ZIP file detection (watchdog)
+- File stability checks (prevents processing incomplete uploads)
+- ZIP integrity validation
+- Automatic invalid file isolation
+
+✅ **Job Queue**
+- SQLite-based persistent queue
+- State tracking (queued → running → done/failed)
+- Exponential backoff retry (1m → 5m → 15m → 1h → 6h)
+- Automatic stuck job recovery
+
+✅ **Documentation**
+- Complete setup guide with troubleshooting
+- Architecture documentation
+- Operations manual for production
+- API reference
+
+### Coming Soon (MVP Phase 2)
+
+🔄 **Content Processing** (In Progress)
+- ZIP extraction and parsing
+- YAML frontmatter validation
+- Markdown → HTML conversion
+- Image file discovery
+
+🔄 **WordPress Integration** (In Progress)
+- REST API client
+- Image upload to media library
+- Draft post creation
+- Featured image association
+
+🔄 **Monitoring & Notifications**
+- FastAPI health/status endpoints
+- Slack success/failure notifications
+- Job statistics and history
+
+---
+
+## 📋 MVP Roadmap
+
+**Sprint 1 Progress:** 50% Complete (4/9 tasks)
+
+- [x] [#1] Specification definition
+- [x] [#2] Repository initialization & CI
+- [x] [#3] Configuration & secrets management
+- [x] [#4] Watcher & queue implementation
+- [ ] [#5] **Processor implementation** ← Next
+- [ ] [#6] Publisher (WordPress API)
+- [ ] [#7] Server integration & threading
+- [ ] [#8] Notifications & monitoring
+- [ ] [#9] E2E testing & acceptance
+
+**See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed progress.**
+
+---
+
+## 🏗️ Architecture
+
+```
+var/inbox/*.zip → Watcher → Queue (SQLite)
+                              ↓
+                         Processor (extract + parse)
+                              ↓
+                         Publisher (WordPress API)
+                              ↓
+                    var/published/ + Slack notification
 ```
 
-### Usage
+**Key Components:**
+- **Watcher:** Monitors inbox for new ZIP files
+- **Queue:** Persistent job storage with retry logic
+- **Processor:** Extracts ZIP, parses frontmatter, converts Markdown
+- **Publisher:** Uploads images and creates WordPress drafts
+- **Server:** FastAPI monitoring endpoints
 
-#### 1. Create a ZIP file
+**See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for deep dive.**
+
+---
+
+## 📦 Input Format
+
+### ZIP Structure
 
 ```
 my-post.zip
-├── post.md          # YAML frontmatter + Markdown
-└── images/          # Optional
-    └── hero.jpg
+├── post.md              # YAML frontmatter + Markdown content
+└── images/              # Optional
+    ├── hero.jpg         # Referenced in frontmatter
+    └── diagram.png      # Referenced in content
 ```
 
-**Example `post.md`:**
+### Example `post.md`
 
 ```yaml
 ---
@@ -80,44 +155,89 @@ featured_image: "images/hero.jpg"
 Your Markdown content here...
 ```
 
-#### 2. Drop the ZIP
+**Required fields:** `title`, `slug`  
+**Optional fields:** `description`, `status`, `categories`, `tags`, `featured_image`, `author`, `date`
+
+---
+
+## 🔧 Configuration
+
+### Required Environment Variables
 
 ```bash
-# Local development
-cp my-post.zip var/inbox/
+# WordPress (Required)
+WP_BASE_URL=https://your-wordpress-site.com
+WP_USER=your_username
+WP_APP_PASSWORD=xxxx xxxx xxxx xxxx  # From WP Admin → Profile → Application Passwords
 
-# Or via SSH
-scp my-post.zip user@server:/opt/blog-pipeline/var/inbox/
+# Slack (Optional)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 ```
 
-#### 3. Monitor progress
+**See [docs/SETUP.md](docs/SETUP.md) for complete setup guide.**
+
+### Validation
 
 ```bash
-# Check health
-curl http://localhost:8000/health
+# Check if everything is configured correctly
+python scripts/check_config.py
 
-# View job status
-curl http://localhost:8000/status | jq
+# Expected output:
+# ✅ Configuration loaded successfully
+# ✅ WordPress URL is valid
+# ✅ WordPress REST API is accessible
+# ✅ WordPress authentication successful
+# ✅ Can create posts (permissions OK)
+# ✅ Can upload media (permissions OK)
+# 🎉 All checks passed!
+```
+
+---
+
+## 🚀 Usage
+
+### Development Mode
+
+```bash
+# Start server
+python -m app.server
+
+# In another terminal, drop a ZIP
+cp sample.zip var/inbox/
 
 # Watch logs
-python -m app.server  # Or: journalctl -u blog-pipeline -f
+tail -f logs/pipeline.log
 ```
 
-#### 4. Check WordPress
+### Production Deployment
 
-Your draft post will appear in **WordPress → Posts → Drafts** within ~60 seconds.
+```bash
+# Install as systemd service
+sudo cp systemd/blog-pipeline.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable blog-pipeline
+sudo systemctl start blog-pipeline
 
-## API Endpoints
+# Monitor
+sudo systemctl status blog-pipeline
+journalctl -u blog-pipeline -f
+```
+
+**See [docs/OPERATIONS.md](docs/OPERATIONS.md) for production guide.**
+
+---
+
+## 📊 API Endpoints
 
 ### `GET /health`
-Health check endpoint.
+Health check
 
 ```json
 {"ok": true, "version": "0.1.0"}
 ```
 
 ### `GET /status?limit=50`
-List recent jobs with status.
+Recent jobs + statistics
 
 ```json
 {
@@ -128,7 +248,6 @@ List recent jobs with status.
       "slug": "keto-start-guide",
       "state": "done",
       "attempts": 1,
-      "last_error": null,
       "updated_at": "2025-10-06T10:30:00"
     }
   ],
@@ -137,7 +256,7 @@ List recent jobs with status.
 ```
 
 ### `POST /retry`
-Manually retry a failed job.
+Manually retry a failed job
 
 ```bash
 curl -X POST http://localhost:8000/retry \
@@ -145,101 +264,94 @@ curl -X POST http://localhost:8000/retry \
   -d '{"job_id": 123}'
 ```
 
-## Production Deployment
+---
 
-### systemd Service
-
-```bash
-# Install service
-sudo cp systemd/blog-pipeline.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable blog-pipeline
-sudo systemctl start blog-pipeline
-
-# Check status
-sudo systemctl status blog-pipeline
-journalctl -u blog-pipeline -f
-```
-
-### Security
+## 🧪 Testing
 
 ```bash
-# Secure .env file
-chmod 600 .env
+# Run all tests
+pytest tests/ -v
 
-# Run as dedicated user
-sudo useradd -r -m -d /opt/blog-pipeline -s /bin/bash bot
-sudo chown -R bot:bot /opt/blog-pipeline
-```
+# With coverage
+pytest tests/ --cov=app --cov-report=term-missing
 
-## Development
+# Specific module
+pytest tests/test_queue.py -v
 
-### Run Tests
-
-```bash
-pytest tests/ --cov=app
-```
-
-### Linting
-
-```bash
+# Linting
 ruff check .
 ruff format .
 ```
 
-## Troubleshooting
+---
 
-### Jobs stuck in "queued"
+## 📖 Documentation
 
-```bash
-# Restart service
-sudo systemctl restart blog-pipeline
+- **[SETUP.md](docs/SETUP.md)** - Installation and configuration guide
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design and data flow
+- **[SPEC_MVP.md](docs/SPEC_MVP.md)** - Complete MVP specification
+- **[OPERATIONS.md](docs/OPERATIONS.md)** - Production deployment and monitoring
+- **[PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Current progress and roadmap
+- **[HANDOFF.md](docs/HANDOFF.md)** - Handoff document for continuation
 
-# Check logs
-journalctl -u blog-pipeline -n 50
-```
+---
 
-### WordPress upload fails
+## 🛣️ Roadmap
 
-- Verify Application Password is active in WordPress
-- Check `upload_max_filesize` in WordPress settings
-- Test API manually:
-  ```bash
-  curl -u "user:pass" https://your-site.com/wp-json/wp/v2/posts
-  ```
+### MVP (Current Sprint)
+- [x] Configuration system
+- [x] File monitoring
+- [x] Job queue with retry logic
+- [ ] Content processor (Markdown → HTML)
+- [ ] WordPress publisher
+- [ ] Monitoring API
+- [ ] Slack notifications
+- [ ] E2E testing
 
-### "Permission denied" errors
+### Post-MVP (Future)
+- [ ] **P2:** Theme-specific YAML configurations
+- [ ] **P3:** AI image generation (`{image: ...}` tags)
+- [ ] **P4:** Auto-publish workflow (draft → publish)
+- [ ] **P5:** Git integration + Prometheus metrics
+- [ ] **P6:** Multi-site support
 
-```bash
-sudo chown -R bot:bot /opt/blog-pipeline/var
-chmod 600 /opt/blog-pipeline/.env
-```
+---
 
-## Documentation
-
-- **[MVP Specification](docs/SPEC_MVP.md)** - Detailed feature spec
-- **[Operations Manual](docs/OPERATIONS.md)** - Setup and maintenance guide
-
-## Roadmap
-
-- [x] MVP: ZIP → WordPress draft automation
-- [ ] P2: Theme-specific configurations (YAML profiles)
-- [ ] P3: AI image generation (`{image: ...}` tags)
-- [ ] P4: Auto-publish workflow + notifications
-- [ ] P5: Git integration for version control
-- [ ] P6: Prometheus metrics endpoint
-
-## License
-
-MIT
-
-## Contributing
+## 🤝 Contributing
 
 Pull requests welcome! Please ensure:
-1. Tests pass: `pytest tests/`
-2. Linting passes: `ruff check . && ruff format --check .`
-3. Update documentation as needed
 
-## Support
+1. ✅ Tests pass: `pytest tests/`
+2. ✅ Linting passes: `ruff check . && ruff format --check .`
+3. ✅ Documentation updated
+4. ✅ Follows existing code style
 
-Issues: https://github.com/masahito-hub/Auto-blog/issues
+**See [docs/HANDOFF.md](docs/HANDOFF.md) for implementation guidance.**
+
+---
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) for details
+
+---
+
+## 🆘 Support
+
+- **Issues:** https://github.com/masahito-hub/Auto-blog/issues
+- **Documentation:** [docs/](docs/)
+- **Setup Help:** See [docs/SETUP.md](docs/SETUP.md) troubleshooting section
+
+---
+
+## 🎯 Project Context
+
+**Goal:** Accelerate affiliate content production for 3 themes (Keto, Sleep, Infidelity Investigation)  
+**Target:** 90 posts (30 each) for revenue validation  
+**Approach:** Automate the bottleneck (WordPress entry) to focus on content quality  
+
+**Built by:** ChatGPT (Lead) + Claude (Requirements + Implementation)
+
+---
+
+**Status:** 🚧 MVP in Progress (50% Complete) | **Next:** Processor Implementation
