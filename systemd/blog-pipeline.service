@@ -1,0 +1,25 @@
+[Unit]
+Description=Blog Pipeline - Auto WordPress Publishing
+After=network.target
+
+[Service]
+Type=simple
+User=bot
+Group=bot
+WorkingDirectory=/opt/blog-pipeline
+EnvironmentFile=/opt/blog-pipeline/.env
+ExecStart=/opt/blog-pipeline/venv/bin/python -m app.server
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blog-pipeline
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
