@@ -3,7 +3,7 @@
 import logging
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -25,6 +25,7 @@ class Job:
     """Job data structure."""
 
     def __init__(self, row: tuple):
+        """Initialize job from database row."""
         self.id = row[0]
         self.file_path = row[1]
         self.slug = row[2]
@@ -35,14 +36,25 @@ class Job:
         self.updated_at = row[7]
         self.next_retry_at = row[8]
 
+    def __repr__(self):
+        return f"<Job id={self.id} slug={self.slug} state={self.state} attempts={self.attempts}>"
+
+
+def get_connection() -> sqlite3.Connection:
+    """Get database connection with row factory."""
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def init_db():
     """Initialize database schema."""
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(settings.db_path)
+    conn = get_connection()
     cursor = conn.cursor()
 
+    # Create jobs table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,19 +69,37 @@ def init_db():
         )
     """)
 
+    # Create indices for efficient queries
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_state_next_retry
         ON jobs(state, next_retry_at)
     """)
 
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_slug
+        ON jobs(slug)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_created_at
+        ON jobs(created_at DESC)
+    """)
+
     conn.commit()
     conn.close()
-    logger.info("Database initialized")
+    logger.info(f"Database initialized at {settings.db_path}")
 
 
 def enqueue_job(file_path: Path) -> int:
-    """Enqueue a new job."""
-    conn = sqlite3.connect(settings.db_path)
+    """Enqueue a new job.
+    
+    Args:
+        file_path: Path to the ZIP file
+        
+    Returns:
+        Job ID
+    """
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -86,8 +116,12 @@ def enqueue_job(file_path: Path) -> int:
 
 
 def get_next_job() -> Optional[Job]:
-    """Get next job to process."""
-    conn = sqlite3.connect(settings.db_path)
+    """Get next job to process.
+    
+    Returns:
+        Next job to process, or None if queue is empty
+    """
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Get queued jobs or failed jobs ready for retry
@@ -101,7 +135,30 @@ def get_next_job() -> Optional[Job]:
     row = cursor.fetchone()
     conn.close()
 
-    return Job(row) if row else None
+    if row:
+        return Job(tuple(row))
+    return None
+
+
+def get_job_by_id(job_id: int) -> Optional[Job]:
+    """Get job by ID.
+    
+    Args:
+        job_id: Job ID
+        
+    Returns:
+        Job object or None if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return Job(tuple(row))
+    return None
 
 
 def update_job_state(
@@ -111,8 +168,16 @@ def update_job_state(
     error: Optional[str] = None,
     increment_attempts: bool = False
 ):
-    """Update job state."""
-    conn = sqlite3.connect(settings.db_path)
+    """Update job state.
+    
+    Args:
+        job_id: Job ID
+        state: New state
+        slug: Post slug (optional)
+        error: Error message (optional)
+        increment_attempts: Whether to increment attempt counter
+    """
+    conn = get_connection()
     cursor = conn.cursor()
 
     updates = ["state = ?", "updated_at = CURRENT_TIMESTAMP"]
@@ -132,12 +197,25 @@ def update_job_state(
     # Calculate next retry time for failed jobs
     if state == JobState.FAILED and increment_attempts:
         cursor.execute("SELECT attempts FROM jobs WHERE id = ?", (job_id,))
-        attempts = cursor.fetchone()[0] + 1
+        row = cursor.fetchone()
+        current_attempts = row[0] if row else 0
+        new_attempts = current_attempts + 1
 
-        if attempts <= settings.max_retries:
-            delay = settings.retry_delays[min(attempts - 1, len(settings.retry_delays) - 1)]
-            updates.append("next_retry_at = datetime('now', ?)")  
-            params.append(f"+{delay} seconds")
+        if new_attempts <= settings.max_retries:
+            retry_delays = settings.get_retry_delays()
+            delay_index = min(new_attempts - 1, len(retry_delays) - 1)
+            delay_seconds = retry_delays[delay_index]
+            
+            updates.append("next_retry_at = datetime('now', ?)")
+            params.append(f"+{delay_seconds} seconds")
+            
+            logger.info(
+                f"Job {job_id} will retry in {delay_seconds}s (attempt {new_attempts}/{settings.max_retries})"
+            )
+        else:
+            # Max retries reached, set next_retry_at to NULL
+            updates.append("next_retry_at = NULL")
+            logger.warning(f"Job {job_id} reached max retries ({settings.max_retries})")
 
     query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
     params.append(job_id)
@@ -146,12 +224,16 @@ def update_job_state(
     conn.commit()
     conn.close()
 
-    logger.info(f"Updated job {job_id}: {state.value}")
+    logger.debug(f"Updated job {job_id}: {state.value}")
 
 
 def get_job_stats() -> dict:
-    """Get job statistics."""
-    conn = sqlite3.connect(settings.db_path)
+    """Get job statistics.
+    
+    Returns:
+        Dictionary with counts for each state
+    """
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -164,3 +246,87 @@ def get_job_stats() -> dict:
 
     conn.close()
     return stats
+
+
+def get_recent_jobs(limit: int = 50) -> list[dict]:
+    """Get recent jobs.
+    
+    Args:
+        limit: Maximum number of jobs to return
+        
+    Returns:
+        List of job dictionaries
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, file_path, slug, state, attempts, last_error, updated_at
+        FROM jobs
+        ORDER BY updated_at DESC
+        LIMIT ?
+    """, (limit,))
+
+    jobs = []
+    for row in cursor.fetchall():
+        jobs.append({
+            "id": row[0],
+            "file": Path(row[1]).name if row[1] else None,
+            "slug": row[2],
+            "state": row[3],
+            "attempts": row[4],
+            "last_error": row[5],
+            "updated_at": row[6],
+        })
+
+    conn.close()
+    return jobs
+
+
+def cleanup_old_jobs(days: int = 30):
+    """Delete jobs older than specified days.
+    
+    Args:
+        days: Number of days to keep
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM jobs
+        WHERE state IN (?, ?)
+        AND updated_at < datetime('now', ?)
+    """, (JobState.DONE.value, JobState.FAILED.value, f"-{days} days"))
+
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    if deleted > 0:
+        logger.info(f"Cleaned up {deleted} old jobs")
+    return deleted
+
+
+def reset_stuck_jobs():
+    """Reset jobs stuck in 'running' state.
+    
+    This is useful for recovery after crashes.
+    Jobs stuck in 'running' for more than 1 hour are reset to 'queued'.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE jobs
+        SET state = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE state = ?
+        AND updated_at < datetime('now', '-1 hour')
+    """, (JobState.QUEUED.value, JobState.RUNNING.value))
+
+    reset = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    if reset > 0:
+        logger.warning(f"Reset {reset} stuck jobs to queued")
+    return reset
