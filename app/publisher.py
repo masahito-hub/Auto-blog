@@ -70,6 +70,65 @@ class WordPressPublisher:
         except RequestException as e:
             raise PublisherError(f"Failed to connect to WordPress: {e}")
 
+    def _fetch_categories(self) -> dict:
+        """Fetch all WordPress categories and cache them."""
+        if hasattr(self, '_category_cache'):
+            return self._category_cache
+        
+        categories = {}
+        page = 1
+        while True:
+            response = self.session.get(
+                f"{self.base_url}/wp-json/wp/v2/categories",
+                params={"page": page, "per_page": 100},
+                timeout=self.timeout
+            )
+            if response.status_code != 200:
+                raise PublisherError(f"Failed to fetch categories: {response.status_code}")
+            data = response.json()
+            if not data:
+                break
+            for cat in data:
+                categories[cat["name"].lower()] = cat["id"]
+            page += 1
+            if len(data) < 100:
+                break
+        self._category_cache = categories
+        return categories
+
+    def resolve_category_ids(self, names: list) -> list:
+        """Resolve category names to IDs (fail-closed)."""
+        if not names:
+            return []
+        categories = self._fetch_categories()
+        ids = []
+        missing = []
+        for name in names:
+            cat_id = categories.get(name.lower())
+            if cat_id:
+                ids.append(cat_id)
+            else:
+                missing.append(name)
+        if missing:
+            raise PublisherError(f"Categories not found: {missing}")
+        return ids
+
+    def check_slug_exists(self, slug: str) -> int:
+        """Check if a post with the given slug already exists.
+        
+        Returns:
+            Post ID if exists, None otherwise
+        """
+        response = self.session.get(
+            f"{self.base_url}/wp-json/wp/v2/posts",
+            params={"slug": slug, "status": "any"},
+            timeout=self.timeout
+        )
+        if response.status_code != 200:
+            return None
+        posts = response.json()
+        return posts[0]["id"] if posts else None
+
     def upload_media(self, image_path: Path) -> dict:
         """Upload image to WordPress media library.
         
@@ -151,6 +210,28 @@ class WordPressPublisher:
         except RequestException as e:
             raise PublisherError(f"Failed to upload {image_path.name}: {e}")
 
+    def upload_content_images(self, post_data: PostData) -> PostData:
+        """Upload content images and replace paths with URLs."""
+        import re
+        content = post_data.content
+        pattern = r'!\[([^\]]*)\]\((images/[^)]+)\)'
+        matches = re.findall(pattern, content)
+        if not matches:
+            return post_data
+        for alt, rel_path in matches:
+            img_path = post_data.work_dir / rel_path
+            if not img_path.exists():
+                continue
+            try:
+                media = self.upload_media(img_path)
+                old_ref = f"![{alt}]({rel_path})"
+                new_ref = f"![{alt}]({media['source_url']})"
+                content = content.replace(old_ref, new_ref)
+            except PublisherError:
+                pass
+        post_data.content = content
+        return post_data
+
     def create_post(
         self,
         post_data: PostData,
@@ -168,6 +249,14 @@ class WordPressPublisher:
         Raises:
             PublisherError: If post creation fails
         """
+        # Check for duplicate slug (fail-closed for idempotency)
+        existing_id = self.check_slug_exists(post_data.slug)
+        if existing_id:
+            raise PublisherError(
+                f"Post with slug '{post_data.slug}' already exists (ID: {existing_id}). "
+                "Delete or rename the existing post first."
+            )
+
         url = f"{self.base_url}/wp-json/wp/v2/posts"
 
         # Build payload
@@ -176,16 +265,18 @@ class WordPressPublisher:
             "slug": post_data.slug,
             "content": post_data.get_html_content(),
             "excerpt": post_data.description,
-            "status": post_data.status,
+            "status": "draft",  # Always force draft for safety
         }
 
         if featured_media_id:
             payload["featured_media"] = featured_media_id
 
-        # TODO: Add categories and tags (requires ID lookup)
-        # For MVP, we skip categories/tags if they don't exist
+        # Resolve category names to WordPress IDs (fail-closed)
         if post_data.categories:
-            logger.debug(f"Categories (not implemented): {post_data.categories}")
+            category_ids = self.resolve_category_ids(post_data.categories)
+            payload["categories"] = category_ids
+        
+        # Tags not implemented yet
         if post_data.tags:
             logger.debug(f"Tags (not implemented): {post_data.tags}")
 

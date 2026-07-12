@@ -246,3 +246,36 @@ def test_publish_post_without_featured_image(
     mock_create_post.assert_called_once()
     call_args = mock_create_post.call_args
     assert call_args.kwargs["featured_media_id"] is None
+
+
+class TestSlugDuplicateCheck:
+    """Test slug duplicate detection."""
+    
+    def test_check_slug_exists_returns_id(self, mock_settings):
+        """Returns post ID when slug exists."""
+        publisher = WordPressPublisher()
+        with patch.object(publisher.session, 'get') as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = [{"id": 123}]
+            assert publisher.check_slug_exists("test") == 123
+    
+    def test_check_slug_exists_returns_none(self, mock_settings):
+        """Returns None when slug does not exist."""
+        publisher = WordPressPublisher()
+        with patch.object(publisher.session, 'get') as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = []
+            assert publisher.check_slug_exists("test") is None
+
+
+class TestCategoryResolution:
+    """Test category resolution."""
+    
+    def test_resolve_missing_category_raises(self, mock_settings):
+        """Raises error when category not found (fail-closed)."""
+        publisher = WordPressPublisher()
+        with patch.object(publisher.session, 'get') as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = []
+            with pytest.raises(PublisherError):
+                publisher.resolve_category_ids(["不明"])
