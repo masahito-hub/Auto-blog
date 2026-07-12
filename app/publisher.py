@@ -63,9 +63,9 @@ class WordPressPublisher:
                 )
 
         except Timeout:
-            raise PublisherError(f"WordPress API timeout. Check if {self.base_url} is accessible.")
+            raise PublisherError(f"WordPress API timeout. Check if {self.base_url} is accessible.") from None
         except RequestException as e:
-            raise PublisherError(f"Failed to connect to WordPress: {e}")
+            raise PublisherError(f"Failed to connect to WordPress: {e}") from e
 
     def _fetch_categories(self) -> dict:
         """Fetch all WordPress categories and cache them."""
@@ -193,9 +193,9 @@ class WordPressPublisher:
         except Timeout:
             raise PublisherError(
                 f"Timeout uploading {image_path.name}. File may be too large or connection is slow."
-            )
+            ) from None
         except RequestException as e:
-            raise PublisherError(f"Failed to upload {image_path.name}: {e}")
+            raise PublisherError(f"Failed to upload {image_path.name}: {e}") from e
 
     def upload_content_images(self, post_data: PostData) -> PostData:
         """Upload content images and replace paths with URLs."""
@@ -297,9 +297,9 @@ class WordPressPublisher:
             raise PublisherError(
                 f"Timeout creating post: {post_data.slug}. "
                 "Content may be too large or connection is slow."
-            )
+            ) from None
         except RequestException as e:
-            raise PublisherError(f"Failed to create post: {e}")
+            raise PublisherError(f"Failed to create post: {e}") from e
 
     def _get_mime_type(self, path: Path) -> str:
         """Get MIME type from file extension.

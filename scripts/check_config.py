@@ -118,7 +118,6 @@ def check_directories():
         ("work", settings.work_dir),
         ("published", settings.published_dir),
     ]:
-        exists = path.exists()
         writable = path.exists() and path.is_dir()
 
         if not writable:

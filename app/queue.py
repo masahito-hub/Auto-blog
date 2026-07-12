@@ -2,7 +2,7 @@
 
 import logging
 import sqlite3
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from app.config import settings
@@ -10,7 +10,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-class JobState(str, Enum):
+class JobState(StrEnum):
     """Job state enum."""
 
     QUEUED = "queued"

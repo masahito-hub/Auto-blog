@@ -209,12 +209,12 @@ def extract_zip(zip_path: Path) -> Path:
         return work_dir
 
     except zipfile.BadZipFile as e:
-        raise ProcessorError(f"Invalid ZIP file: {e}")
+        raise ProcessorError(f"Invalid ZIP file: {e}") from e
     except Exception as e:
         # Clean up partial extraction
         if work_dir.exists():
             shutil.rmtree(work_dir)
-        raise ProcessorError(f"Failed to extract ZIP: {e}")
+        raise ProcessorError(f"Failed to extract ZIP: {e}") from e
 
 
 def parse_post_md(work_dir: Path) -> PostData:
@@ -249,7 +249,7 @@ def parse_post_md(work_dir: Path) -> PostData:
     except UnicodeDecodeError:
         raise ProcessorError(
             "post.md must be UTF-8 encoded. Please save your file with UTF-8 encoding."
-        )
+        ) from None
 
     # Split frontmatter and content
     if not content.strip():
@@ -282,7 +282,7 @@ def parse_post_md(work_dir: Path) -> PostData:
         if frontmatter is None:
             frontmatter = {}
     except yaml.YAMLError as e:
-        raise ProcessorError(f"Invalid YAML in frontmatter: {e}")
+        raise ProcessorError(f"Invalid YAML in frontmatter: {e}") from e
 
     markdown_content = parts[2].strip()
 

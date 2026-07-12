@@ -134,7 +134,7 @@ def test_create_post_success(mock_post, mock_settings, mock_post_data):
     mock_post.return_value = mock_response
 
     publisher = WordPressPublisher()
-    post = publisher.create_post(mock_post_data, featured_media_id=123)
+    publisher.create_post(mock_post_data, featured_media_id=123)
 
     assert post["id"] == 456
     assert "link" in post
@@ -157,7 +157,7 @@ def test_create_post_without_featured_image(mock_post, mock_settings, mock_post_
     mock_post.return_value = mock_response
 
     publisher = WordPressPublisher()
-    post = publisher.create_post(mock_post_data)
+    publisher.create_post(mock_post_data)
 
     # Verify featured_media not in payload
     call_args = mock_post.call_args
@@ -214,7 +214,7 @@ def test_publish_post_complete_workflow(
     mock_create_post.return_value = {"id": 456, "link": "https://test.com/test-post/"}
 
     # Publish
-    result = publish_post(mock_post_data)
+    publish_post(mock_post_data)
 
     # Verify calls
     mock_test_connection.assert_called_once()
@@ -233,7 +233,7 @@ def test_publish_post_without_featured_image(
     mock_test_connection.return_value = True
     mock_create_post.return_value = {"id": 456, "link": "https://test.com/test-post/"}
 
-    result = publish_post(mock_post_data)
+    publish_post(mock_post_data)
 
     # Should not attempt upload
     mock_create_post.assert_called_once()
