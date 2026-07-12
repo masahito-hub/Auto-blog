@@ -1,11 +1,9 @@
 """File watcher for monitoring ZIP files in inbox directory."""
 
-import hashlib
 import logging
 import time
 import zipfile
 from pathlib import Path
-from typing import Dict
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -22,7 +20,7 @@ class ZipFileHandler(FileSystemEventHandler):
     def __init__(self):
         super().__init__()
         # Track pending files with their detection time and size
-        self.pending_files: Dict[str, dict] = {}
+        self.pending_files: dict[str, dict] = {}
         self.stability_timeout = 5  # seconds
         self.max_file_size = 100 * 1024 * 1024  # 100MB
 
@@ -36,7 +34,7 @@ class ZipFileHandler(FileSystemEventHandler):
             return
 
         logger.info(f"Detected new ZIP file: {path.name}")
-        
+
         # Initial validation
         if not self._validate_file_basic(path):
             return
@@ -66,10 +64,10 @@ class ZipFileHandler(FileSystemEventHandler):
 
     def _validate_file_basic(self, path: Path) -> bool:
         """Basic file validation.
-        
+
         Args:
             path: Path to ZIP file
-            
+
         Returns:
             True if file passes basic validation
         """
@@ -93,16 +91,16 @@ class ZipFileHandler(FileSystemEventHandler):
 
     def _validate_file_complete(self, path: Path) -> bool:
         """Validate that file is a valid ZIP and completely written.
-        
+
         Args:
             path: Path to ZIP file
-            
+
         Returns:
             True if file is a valid, complete ZIP
         """
         try:
             # Try to open and read ZIP structure
-            with zipfile.ZipFile(path, 'r') as zip_ref:
+            with zipfile.ZipFile(path, "r") as zip_ref:
                 # Test ZIP integrity
                 bad_file = zip_ref.testzip()
                 if bad_file:
@@ -111,11 +109,8 @@ class ZipFileHandler(FileSystemEventHandler):
 
                 # Check for required post.md
                 file_list = zip_ref.namelist()
-                has_post_md = any(
-                    f.endswith('post.md') or f == 'post.md'
-                    for f in file_list
-                )
-                
+                has_post_md = any(f.endswith("post.md") or f == "post.md" for f in file_list)
+
                 if not has_post_md:
                     logger.error(f"ZIP {path.name} missing post.md")
                     return False
@@ -132,11 +127,11 @@ class ZipFileHandler(FileSystemEventHandler):
 
     def _is_file_stable(self, path: Path, info: dict) -> bool:
         """Check if file is stable (no longer being written).
-        
+
         Args:
             path: Path to file
             info: File tracking info
-            
+
         Returns:
             True if file size hasn't changed for stability_timeout seconds
         """
@@ -156,7 +151,7 @@ class ZipFileHandler(FileSystemEventHandler):
 
         # File size stable, wait for timeout
         info["checked_count"] += 1
-        
+
         if time_since_detection >= self.stability_timeout:
             return True
 
@@ -168,7 +163,7 @@ class ZipFileHandler(FileSystemEventHandler):
 
         for file_path, info in list(self.pending_files.items()):
             path = Path(file_path)
-            
+
             if not path.exists():
                 logger.warning(f"Pending file disappeared: {path.name}")
                 stable_files.append(file_path)
@@ -176,7 +171,7 @@ class ZipFileHandler(FileSystemEventHandler):
 
             if self._is_file_stable(path, info):
                 logger.info(f"File stable, validating: {path.name}")
-                
+
                 # Validate ZIP is complete and valid
                 if self._validate_file_complete(path):
                     try:
@@ -216,7 +211,7 @@ def start_watcher():
 
     # Check for existing files on startup
     event_handler = ZipFileHandler()
-    
+
     existing_zips = list(settings.inbox_dir.glob("*.zip"))
     if existing_zips:
         logger.info(f"Found {len(existing_zips)} existing ZIP files on startup")
@@ -226,7 +221,7 @@ def start_watcher():
                 def __init__(self, path):
                     self.src_path = str(path)
                     self.is_directory = False
-            
+
             event_handler.on_created(FakeEvent(zip_path))
 
     # Start watchdog observer

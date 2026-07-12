@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from app.config import settings
 
@@ -11,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ImageError(Exception):
     """Custom exception for image processing errors."""
+
     pass
 
 
@@ -49,7 +49,7 @@ def get_images_from_work_dir(work_dir: Path) -> list[Path]:
     return valid_images
 
 
-def generate_image(prompt: str, style: str) -> Optional[Path]:
+def generate_image(prompt: str, style: str) -> Path | None:
     """Generate image from prompt (MVP: not implemented)."""
     if settings.images_provider == "none":
         logger.debug("Image generation disabled (MVP mode)")

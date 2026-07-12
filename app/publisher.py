@@ -1,9 +1,7 @@
 """WordPress REST API publisher."""
 
 import logging
-import time
 from pathlib import Path
-from typing import Optional
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -17,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class PublisherError(Exception):
     """Custom exception for publisher errors."""
+
     pass
 
 
@@ -29,59 +28,57 @@ class WordPressPublisher:
         self.auth = HTTPBasicAuth(settings.wp_user, settings.wp_app_password)
         self.session = requests.Session()
         self.session.auth = self.auth
-        self.session.headers.update({
-            "User-Agent": "BlogPipeline/0.1.0",
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": "BlogPipeline/0.1.0",
+            }
+        )
         self.timeout = 30  # seconds
 
     def test_connection(self) -> bool:
         """Test connection to WordPress API.
-        
+
         Returns:
             True if connection successful
-            
+
         Raises:
             PublisherError: If connection fails
         """
         try:
             response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/users/me",
-                timeout=self.timeout
+                f"{self.base_url}/wp-json/wp/v2/users/me", timeout=self.timeout
             )
-            
+
             if response.status_code == 200:
                 user_data = response.json()
                 logger.info(f"Connected to WordPress as: {user_data.get('name', 'unknown')}")
                 return True
             elif response.status_code == 401:
                 raise PublisherError(
-                    "WordPress authentication failed. "
-                    "Check WP_USER and WP_APP_PASSWORD in .env"
+                    "WordPress authentication failed. Check WP_USER and WP_APP_PASSWORD in .env"
                 )
             else:
                 raise PublisherError(
                     f"WordPress API returned {response.status_code}: {response.text}"
                 )
-                
+
         except Timeout:
-            raise PublisherError(
-                f"WordPress API timeout. Check if {self.base_url} is accessible."
-            )
+            raise PublisherError(f"WordPress API timeout. Check if {self.base_url} is accessible.")
         except RequestException as e:
             raise PublisherError(f"Failed to connect to WordPress: {e}")
 
     def _fetch_categories(self) -> dict:
         """Fetch all WordPress categories and cache them."""
-        if hasattr(self, '_category_cache'):
+        if hasattr(self, "_category_cache"):
             return self._category_cache
-        
+
         categories = {}
         page = 1
         while True:
             response = self.session.get(
                 f"{self.base_url}/wp-json/wp/v2/categories",
                 params={"page": page, "per_page": 100},
-                timeout=self.timeout
+                timeout=self.timeout,
             )
             if response.status_code != 200:
                 raise PublisherError(f"Failed to fetch categories: {response.status_code}")
@@ -115,14 +112,14 @@ class WordPressPublisher:
 
     def check_slug_exists(self, slug: str) -> int:
         """Check if a post with the given slug already exists.
-        
+
         Returns:
             Post ID if exists, None otherwise
         """
         response = self.session.get(
             f"{self.base_url}/wp-json/wp/v2/posts",
             params={"slug": slug, "status": "any"},
-            timeout=self.timeout
+            timeout=self.timeout,
         )
         if response.status_code != 200:
             return None
@@ -131,22 +128,22 @@ class WordPressPublisher:
 
     def upload_media(self, image_path: Path) -> dict:
         """Upload image to WordPress media library.
-        
+
         Args:
             image_path: Path to image file
-            
+
         Returns:
             Media object with 'id' and 'source_url'
-            
+
         Raises:
             PublisherError: If upload fails
         """
         url = f"{self.base_url}/wp-json/wp/v2/media"
-        
+
         # Validate file exists and size
         if not image_path.exists():
             raise PublisherError(f"Image file not found: {image_path}")
-        
+
         file_size = image_path.stat().st_size
         max_size = 10 * 1024 * 1024  # 10MB
         if file_size > max_size:
@@ -157,20 +154,13 @@ class WordPressPublisher:
 
         try:
             with open(image_path, "rb") as f:
-                files = {
-                    "file": (image_path.name, f, self._get_mime_type(image_path))
-                }
-                headers = {
-                    "Content-Disposition": f'attachment; filename="{image_path.name}"'
-                }
+                files = {"file": (image_path.name, f, self._get_mime_type(image_path))}
+                headers = {"Content-Disposition": f'attachment; filename="{image_path.name}"'}
 
                 logger.debug(f"Uploading {image_path.name} ({file_size / 1024:.1f}KB)...")
-                
+
                 response = self.session.post(
-                    url,
-                    files=files,
-                    headers=headers,
-                    timeout=self.timeout
+                    url, files=files, headers=headers, timeout=self.timeout
                 )
 
             # Handle response
@@ -189,9 +179,7 @@ class WordPressPublisher:
                     "Check upload_max_filesize in WordPress settings."
                 )
             elif response.status_code == 429:
-                raise PublisherError(
-                    "WordPress rate limit exceeded. Will retry later."
-                )
+                raise PublisherError("WordPress rate limit exceeded. Will retry later.")
             elif response.status_code >= 500:
                 raise PublisherError(
                     f"WordPress server error ({response.status_code}). Will retry."
@@ -201,11 +189,10 @@ class WordPressPublisher:
                     f"Failed to upload {image_path.name}: "
                     f"{response.status_code} - {response.text[:200]}"
                 )
-                
+
         except Timeout:
             raise PublisherError(
-                f"Timeout uploading {image_path.name}. "
-                "File may be too large or connection is slow."
+                f"Timeout uploading {image_path.name}. File may be too large or connection is slow."
             )
         except RequestException as e:
             raise PublisherError(f"Failed to upload {image_path.name}: {e}")
@@ -213,39 +200,36 @@ class WordPressPublisher:
     def upload_content_images(self, post_data: PostData) -> PostData:
         """Upload content images and replace paths with URLs."""
         import re
+
         content = post_data.content
-        pattern = r'!\[([^\]]*)\]\((images/[^)]+)\)'
+        pattern = r"!\[([^\]]*)\]\((images/[^)]+)\)"
         matches = re.findall(pattern, content)
         if not matches:
             return post_data
         for alt, rel_path in matches:
             img_path = post_data.work_dir / rel_path
             if not img_path.exists():
-                continue
+                raise PublisherError(f"Content image not found: {rel_path}")
             try:
                 media = self.upload_media(img_path)
                 old_ref = f"![{alt}]({rel_path})"
                 new_ref = f"![{alt}]({media['source_url']})"
                 content = content.replace(old_ref, new_ref)
-            except PublisherError:
-                pass
+            except PublisherError as e:
+                raise PublisherError(f"Content image upload failed: {rel_path}. {e}") from e
         post_data.content = content
         return post_data
 
-    def create_post(
-        self,
-        post_data: PostData,
-        featured_media_id: Optional[int] = None
-    ) -> dict:
+    def create_post(self, post_data: PostData, featured_media_id: int | None = None) -> dict:
         """Create WordPress post as draft.
-        
+
         Args:
             post_data: PostData object
             featured_media_id: WordPress media ID for featured image
-            
+
         Returns:
             WordPress post object with 'id' and 'link'
-            
+
         Raises:
             PublisherError: If post creation fails
         """
@@ -275,48 +259,40 @@ class WordPressPublisher:
         if post_data.categories:
             category_ids = self.resolve_category_ids(post_data.categories)
             payload["categories"] = category_ids
-        
+
         # Tags not implemented yet
         if post_data.tags:
             logger.debug(f"Tags (not implemented): {post_data.tags}")
 
         try:
             logger.debug(f"Creating post: {post_data.slug}...")
-            
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.timeout
-            )
+
+            response = self.session.post(url, json=payload, timeout=self.timeout)
 
             # Handle response
             if response.status_code == 201:
                 post = response.json()
-                logger.info(
-                    f"Created post → ID: {post['id']} | {post['link']}"
-                )
+                logger.info(f"Created post → ID: {post['id']} | {post['link']}")
                 return post
             elif response.status_code == 401:
                 raise PublisherError("Authentication failed during post creation")
             elif response.status_code == 403:
-                raise PublisherError(
-                    "Permission denied. User needs Editor or Administrator role."
-                )
+                raise PublisherError("Permission denied. User needs Editor or Administrator role.")
             elif response.status_code == 429:
-                raise PublisherError(
-                    "WordPress rate limit exceeded. Will retry later."
-                )
+                raise PublisherError("WordPress rate limit exceeded. Will retry later.")
             elif response.status_code >= 500:
                 raise PublisherError(
                     f"WordPress server error ({response.status_code}). Will retry."
                 )
             else:
-                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-                error_msg = error_data.get('message', response.text[:200])
-                raise PublisherError(
-                    f"Failed to create post: {response.status_code} - {error_msg}"
+                error_data = (
+                    response.json()
+                    if response.headers.get("content-type", "").startswith("application/json")
+                    else {}
                 )
-                
+                error_msg = error_data.get("message", response.text[:200])
+                raise PublisherError(f"Failed to create post: {response.status_code} - {error_msg}")
+
         except Timeout:
             raise PublisherError(
                 f"Timeout creating post: {post_data.slug}. "
@@ -327,10 +303,10 @@ class WordPressPublisher:
 
     def _get_mime_type(self, path: Path) -> str:
         """Get MIME type from file extension.
-        
+
         Args:
             path: File path
-            
+
         Returns:
             MIME type string
         """
@@ -346,27 +322,27 @@ class WordPressPublisher:
 
 def publish_post(post_data: PostData) -> dict:
     """Publish post to WordPress.
-    
+
     This is the main entry point for publishing.
-    
+
     Args:
         post_data: PostData object from processor
-        
+
     Returns:
         WordPress post object with 'id' and 'link'
-        
+
     Raises:
         PublisherError: If publishing fails
     """
     publisher = WordPressPublisher()
-    
+
     # Test connection first
     publisher.test_connection()
 
     # Upload featured image if specified
     featured_media_id = None
     featured_image_path = post_data.get_featured_image_path()
-    
+
     if featured_image_path:
         try:
             media = publisher.upload_media(featured_image_path)
@@ -375,9 +351,7 @@ def publish_post(post_data: PostData) -> dict:
             # Log warning but continue (post can exist without featured image)
             logger.warning(f"Failed to upload featured image: {e}")
     elif post_data.featured_image:
-        logger.warning(
-            f"Featured image specified but not found: {post_data.featured_image}"
-        )
+        logger.warning(f"Featured image specified but not found: {post_data.featured_image}")
 
     # Create post
     post = publisher.create_post(post_data, featured_media_id)

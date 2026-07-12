@@ -3,7 +3,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -18,23 +17,22 @@ class Settings(BaseSettings):
     wp_app_password: str = Field(..., description="WordPress application password")
 
     # Slack (Optional)
-    slack_webhook_url: Optional[str] = Field(None, description="Slack webhook URL")
+    slack_webhook_url: str | None = Field(None, description="Slack webhook URL")
 
     # Image generation (MVP: disabled)
     images_provider: str = Field("none", description="Image provider: none|openai|replicate")
 
     # Paths
     base_dir: Path = Field(default_factory=lambda: Path.cwd())
-    inbox_dir: Optional[Path] = None
-    work_dir: Optional[Path] = None
-    published_dir: Optional[Path] = None
-    db_path: Optional[Path] = None
+    inbox_dir: Path | None = None
+    work_dir: Path | None = None
+    published_dir: Path | None = None
+    db_path: Path | None = None
 
     # Queue settings
     max_retries: int = Field(5, description="Maximum retry attempts")
     retry_delays: str = Field(
-        "60,300,900,3600,21600",
-        description="Comma-separated retry delays in seconds"
+        "60,300,900,3600,21600", description="Comma-separated retry delays in seconds"
     )
 
     # Server
