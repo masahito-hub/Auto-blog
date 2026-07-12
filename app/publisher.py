@@ -88,7 +88,10 @@ class WordPressPublisher:
             if not data:
                 break
             for cat in data:
-                categories[cat["name"].lower()] = cat["id"]
+                name = cat["name"]
+                if name not in categories:
+                    categories[name] = []
+                categories[name].append(cat["id"])
             page += 1
             if len(data) < 100:
                 break
@@ -96,37 +99,43 @@ class WordPressPublisher:
         return categories
 
     def resolve_category_ids(self, names: list) -> list:
-        """Resolve category names to IDs (fail-closed)."""
+        """Resolve category names to IDs (fail-closed, exact match)."""
         if not names:
             return []
         categories = self._fetch_categories()
         ids = []
-        missing = []
         for name in names:
-            cat_id = categories.get(name.lower())
-            if cat_id:
-                ids.append(cat_id)
-            else:
-                missing.append(name)
-        if missing:
-            raise PublisherError(f"Categories not found: {missing}")
+            matches = categories.get(name, [])
+            if len(matches) == 0:
+                raise PublisherError(f"Category not found: {name}")
+            if len(matches) > 1:
+                raise PublisherError(f"Multiple categories: {name}")
+            ids.append(matches[0])
         return ids
 
-    def check_slug_exists(self, slug: str) -> int:
-        """Check if a post with the given slug already exists.
-
-        Returns:
-            Post ID if exists, None otherwise
-        """
-        response = self.session.get(
-            f"{self.base_url}/wp-json/wp/v2/posts",
-            params={"slug": slug, "status": "any"},
-            timeout=self.timeout,
-        )
-        if response.status_code != 200:
+    def check_slug_exists(self, slug: str) -> int | None:
+        """Check slug exists (fail-closed)."""
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/wp-json/wp/v2/posts",
+                params={"slug": slug, "status": "any"},
+                timeout=self.timeout,
+            )
+        except Timeout:
+            raise PublisherError("Timeout checking slug") from None
+        except RequestException as e:
+            raise PublisherError(f"Slug check failed: {e}") from e
+        if resp.status_code != 200:
+            raise PublisherError(f"Slug API error: {resp.status_code}")
+        try:
+            posts = resp.json()
+        except Exception as e:
+            raise PublisherError(f"Invalid JSON: {e}") from e
+        if not posts:
             return None
-        posts = response.json()
-        return posts[0]["id"] if posts else None
+        if len(posts) > 1:
+            raise PublisherError(f"Multiple posts with slug '{slug}'")
+        return posts[0]["id"]
 
     def upload_media(self, image_path: Path) -> dict:
         """Upload image to WordPress media library.
@@ -199,6 +208,21 @@ class WordPressPublisher:
         except RequestException as e:
             raise PublisherError(f"Failed to upload {image_path.name}: {e}") from e
 
+    def _validate_image_path(self, work_dir: Path, rel_path: str) -> Path:
+        """Validate image path (fail-closed)."""
+        if not rel_path.startswith("images/"):
+            raise PublisherError(f"Image must be under images/: {rel_path}")
+        if ".." in rel_path:
+            raise PublisherError(f"Path traversal not allowed: {rel_path}")
+        img_path = (work_dir / rel_path).resolve()
+        if not str(img_path).startswith(str(work_dir.resolve())):
+            raise PublisherError(f"Path escape: {rel_path}")
+        if img_path.is_symlink():
+            raise PublisherError(f"Symlink not allowed: {rel_path}")
+        if not img_path.exists():
+            raise PublisherError(f"Image not found: {rel_path}")
+        return img_path
+
     def upload_content_images(self, post_data: PostData) -> PostData:
         """Upload content images and replace paths with URLs."""
         import re
@@ -208,17 +232,18 @@ class WordPressPublisher:
         matches = re.findall(pattern, content)
         if not matches:
             return post_data
+        uploaded = {}  # dedupe: rel_path -> url
         for alt, rel_path in matches:
-            img_path = post_data.work_dir / rel_path
-            if not img_path.exists():
-                raise PublisherError(f"Content image not found: {rel_path}")
-            try:
+            if rel_path in uploaded:
+                url = uploaded[rel_path]
+            else:
+                img_path = self._validate_image_path(post_data.work_dir, rel_path)
                 media = self.upload_media(img_path)
-                old_ref = f"![{alt}]({rel_path})"
-                new_ref = f"![{alt}]({media['source_url']})"
-                content = content.replace(old_ref, new_ref)
-            except PublisherError as e:
-                raise PublisherError(f"Content image upload failed: {rel_path}. {e}") from e
+                url = media["source_url"]
+                uploaded[rel_path] = url
+            old_ref = f"![{alt}]({rel_path})"
+            new_ref = f"![{alt}]({url})"
+            content = content.replace(old_ref, new_ref)
         post_data.content = content
         return post_data
 
@@ -354,6 +379,9 @@ def publish_post(post_data: PostData) -> dict:
             logger.warning(f"Failed to upload featured image: {e}")
     elif post_data.featured_image:
         logger.warning(f"Featured image specified but not found: {post_data.featured_image}")
+
+    # Upload content images (fail on error)
+    post_data = publisher.upload_content_images(post_data)
 
     # Create post
     post = publisher.create_post(post_data, featured_media_id)

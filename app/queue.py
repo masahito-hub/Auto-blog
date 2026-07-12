@@ -33,6 +33,8 @@ class Job:
         self.created_at = row[6]
         self.updated_at = row[7]
         self.next_retry_at = row[8]
+        self.wp_post_id = row[9] if len(row) > 9 else None
+        self.wp_url = row[10] if len(row) > 10 else None
 
     def __repr__(self):
         return f"<Job id={self.id} slug={self.slug} state={self.state} attempts={self.attempts}>"
@@ -63,7 +65,9 @@ def init_db():
             last_error TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            next_retry_at TIMESTAMP
+            next_retry_at TIMESTAMP,
+            wp_post_id INTEGER,
+            wp_url TEXT
         )
     """)
 
@@ -125,7 +129,7 @@ def get_next_job() -> Job | None:
     cursor.execute(
         """
         SELECT * FROM jobs
-        WHERE (state = ? OR (state = ? AND next_retry_at <= datetime('now')))
+        WHERE wp_post_id IS NULL AND (state = ? OR (state = ? AND next_retry_at <= datetime('now')))
         ORDER BY created_at ASC
         LIMIT 1
     """,
@@ -167,6 +171,8 @@ def update_job_state(
     slug: str | None = None,
     error: str | None = None,
     increment_attempts: bool = False,
+    wp_post_id: int | None = None,
+    wp_url: str | None = None,
 ):
     """Update job state.
 
@@ -190,6 +196,14 @@ def update_job_state(
     if error:
         updates.append("last_error = ?")
         params.append(error)
+
+    if wp_post_id:
+        updates.append("wp_post_id = ?")
+        params.append(wp_post_id)
+
+    if wp_url:
+        updates.append("wp_url = ?")
+        params.append(wp_url)
 
     if increment_attempts:
         updates.append("attempts = attempts + 1")

@@ -21,29 +21,24 @@ Auto-blogはVPS上で稼働し、WordPressにはREST API経由で接続します
 | VPS (実行環境) | Python 3.11+ | Auto-blog実行 |
 | XServer | Python 3.6.8 | **使用しない** |
 
-### 方針
-- Python 3.11+を維持
-- Python 3.6対応コードは作成しない
-- XServerのPythonはAuto-blogの実行要件ではない
+## Fail-Closed設計
+
+全てのAPI呼び出しはfail-closed:
+- **Slug重複チェック**: 200以外/timeout/複数返却→エラー
+- **カテゴリ解決**: 完全一致1件のみ許可、0件/複数→エラー
+- **画像アップロード**: path safety違反/symlink/..→エラー
+- **投稿作成**: 認証失敗/権限不足/rate limit→エラー
+
+## Queue Idempotency
+
+- `wp_post_id`/`wp_url`をDB永続化
+- POST成功直後に保存
+- `wp_post_id`ありジョブは再POSTしない
 
 ## 依存関係
 
 ```
-# requirements.txt
 requests>=2.28.0
 python-frontmatter>=1.0.0
 pyyaml>=6.0
 ```
-
-## 確認済み互換性
-
-- subprocess.run(capture_output=True): Python 3.7+
-- f-strings: Python 3.6+
-- typing hints: Python 3.9+ (full support)
-- match-case: Python 3.10+ (使用しない)
-
-## 備考
-
-tokoroten-siteの`build_autoblog_package.py`は標準ライブラリのみで実装。
-XServer (Python 3.6) での実行時は`capture_output`の互換性問題あり。
-→ ZIP生成はVPS上で実行することを推奨。
