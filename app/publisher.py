@@ -63,7 +63,9 @@ class WordPressPublisher:
                 )
 
         except Timeout:
-            raise PublisherError(f"WordPress API timeout. Check if {self.base_url} is accessible.") from None
+            raise PublisherError(
+                f"WordPress API timeout. Check if {self.base_url} is accessible."
+            ) from None
         except RequestException as e:
             raise PublisherError(f"Failed to connect to WordPress: {e}") from e
 
