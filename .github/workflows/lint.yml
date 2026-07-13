@@ -27,7 +27,7 @@ jobs:
     env:
       WP_BASE_URL: https://test.example.com
       WP_USER: testuser
-      WP_APP_PASSWORD: testpassword
+      WP_APP_PASSWORD: "abcd efgh ijkl mnop qrst uvwx"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
