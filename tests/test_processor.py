@@ -213,7 +213,7 @@ print("code block")
     post_data = PostData(frontmatter, content, Path("/tmp"))
     html = post_data.get_html_content()
 
-    assert "<h1>Heading</h1>" in html
+    assert "<h1" in html and "Heading</h1>" in html
     assert "<strong>bold</strong>" in html
     assert "<em>italic</em>" in html
     assert "<li>List item 1</li>" in html

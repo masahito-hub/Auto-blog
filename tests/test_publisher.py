@@ -121,9 +121,12 @@ def test_upload_media_rate_limit(mock_post, mock_settings, tmp_path):
         publisher.upload_media(image_path)
 
 
+@patch("app.publisher.WordPressPublisher.resolve_category_ids")
+@patch("app.publisher.WordPressPublisher.check_slug_exists")
 @patch("app.publisher.requests.Session.post")
-def test_create_post_success(mock_post, mock_settings, mock_post_data):
-    """Test successful post creation."""
+def test_create_post_success(mock_post, mock_slug, mock_cat, mock_settings, mock_post_data):
+    mock_slug.return_value = None
+    mock_cat.return_value = []
     mock_response = Mock()
     mock_response.status_code = 201
     mock_response.json.return_value = {
@@ -148,8 +151,14 @@ def test_create_post_success(mock_post, mock_settings, mock_post_data):
     assert payload["featured_media"] == 123
 
 
+@patch("app.publisher.WordPressPublisher.resolve_category_ids")
+@patch("app.publisher.WordPressPublisher.check_slug_exists")
 @patch("app.publisher.requests.Session.post")
-def test_create_post_without_featured_image(mock_post, mock_settings, mock_post_data):
+def test_create_post_without_featured_image(
+    mock_post, mock_slug, mock_cat, mock_settings, mock_post_data
+):
+    mock_slug.return_value = None
+    mock_cat.return_value = []
     """Test post creation without featured image."""
     mock_response = Mock()
     mock_response.status_code = 201
@@ -165,8 +174,14 @@ def test_create_post_without_featured_image(mock_post, mock_settings, mock_post_
     assert "featured_media" not in payload
 
 
+@patch("app.publisher.WordPressPublisher.resolve_category_ids")
+@patch("app.publisher.WordPressPublisher.check_slug_exists")
 @patch("app.publisher.requests.Session.post")
-def test_create_post_permission_denied(mock_post, mock_settings, mock_post_data):
+def test_create_post_permission_denied(
+    mock_post, mock_slug, mock_cat, mock_settings, mock_post_data
+):
+    mock_slug.return_value = None
+    mock_cat.return_value = []
     """Test permission denied error."""
     mock_response = Mock()
     mock_response.status_code = 403

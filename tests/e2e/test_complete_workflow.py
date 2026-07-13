@@ -151,8 +151,11 @@ def test_publisher_creates_wordpress_post(mock_post, mock_get, test_env):
     post_data = process_zip(zip_path)
 
     # Mock WordPress API responses
-    # 1. Connection test
-    mock_get.return_value = Mock(status_code=200, json=lambda: {"name": "Test User"})
+    # 1. Connection test, 2. Slug check (empty=not exists), 3. Categories
+    conn_resp = Mock(status_code=200, json=lambda: {"name": "Test"})
+    slug_resp = Mock(status_code=200, json=lambda: [])
+    cat_resp = Mock(status_code=200, json=lambda: [])
+    mock_get.side_effect = [conn_resp, slug_resp, cat_resp]
 
     # 2. Media upload
     media_response = Mock(
@@ -189,8 +192,11 @@ def test_publisher_creates_wordpress_post(mock_post, mock_get, test_env):
 @patch("app.publisher.requests.Session.post")
 def test_complete_job_workflow(mock_post, mock_get, test_env):
     """Test complete workflow from ZIP to published post."""
-    # Setup mocks
-    mock_get.return_value = Mock(status_code=200, json=lambda: {"name": "Test User"})
+    # Setup mocks: conn, slug check, categories
+    conn = Mock(status_code=200, json=lambda: {"name": "Test"})
+    slug = Mock(status_code=200, json=lambda: [])
+    cat = Mock(status_code=200, json=lambda: [])
+    mock_get.side_effect = [conn, slug, cat]
 
     media_response = Mock(
         status_code=201, json=lambda: {"id": 123, "source_url": "https://test.com/image.jpg"}
@@ -235,8 +241,8 @@ def test_complete_job_workflow(mock_post, mock_get, test_env):
 @patch("app.publisher.requests.Session.post")
 def test_job_failure_and_retry(mock_post, mock_get, test_env):
     """Test job failure and retry mechanism."""
-    # Setup: First attempt fails, second succeeds
-    mock_get.return_value = Mock(status_code=200, json=lambda: {"name": "Test User"})
+    # Setup: conn, slug, cat (multiple calls)
+    mock_get.return_value = Mock(status_code=200, json=lambda: [])
 
     # First call: timeout (will trigger retry)
     mock_post.side_effect = [
