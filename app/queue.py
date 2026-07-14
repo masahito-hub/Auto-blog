@@ -71,6 +71,13 @@ def init_db():
         )
     """)
 
+    # Migration: Add wp_post_id/wp_url columns if missing (idempotent)
+    cols = {row[1] for row in cursor.execute("PRAGMA table_info(jobs)")}
+    if "wp_post_id" not in cols:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN wp_post_id INTEGER")
+    if "wp_url" not in cols:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN wp_url TEXT")
+
     # Create indices for efficient queries
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_state_next_retry
@@ -104,6 +111,15 @@ def enqueue_job(file_path: Path) -> int:
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Check for duplicate (same file_path with QUEUED/RUNNING/FAILED)
+    cursor.execute(
+        "SELECT id FROM jobs WHERE file_path = ? AND state IN (?, ?, ?)",
+        (str(file_path), JobState.QUEUED.value, JobState.RUNNING.value, JobState.FAILED.value),
+    )
+    if cursor.fetchone():
+        conn.close()
+        logger.warning(f"Duplicate job skipped: {file_path.name}")
+        return -1
     cursor.execute(
         "INSERT INTO jobs (file_path, state) VALUES (?, ?)", (str(file_path), JobState.QUEUED.value)
     )

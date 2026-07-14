@@ -140,6 +140,10 @@ def process_single_job(job: Job):
         # Step 2: Publish to WordPress
         wp_post = publish_post(post_data)
         logger.info(f"Job {job.id}: Published to WordPress: {wp_post['link']}")
+        # Save wp_post_id/url immediately after success (before ZIP move)
+        update_job_state(
+            job.id, JobState.RUNNING, wp_post_id=wp_post.get("id"), wp_url=wp_post.get("link")
+        )
 
         # Step 3: Move ZIP to published directory
         published_path = settings.published_dir / file_path.name
