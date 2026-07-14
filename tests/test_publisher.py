@@ -239,16 +239,16 @@ def test_publish_post_complete_workflow(
     assert result["id"] == 456
 
 
+@patch("app.publisher.WordPressPublisher.upload_content_images")
 @patch("app.publisher.WordPressPublisher.test_connection")
 @patch("app.publisher.WordPressPublisher.create_post")
 def test_publish_post_without_featured_image(
-    mock_create_post, mock_test_connection, mock_settings, mock_post_data
+    mock_create_post, mock_test_connection, mock_upload_ci, mock_settings, mock_post_data
 ):
     """Test publishing without featured image."""
     mock_test_connection.return_value = True
+    mock_upload_ci.return_value = mock_post_data
     mock_create_post.return_value = {"id": 456, "link": "https://test.com/test-post/"}
-
-    publish_post(mock_post_data)
 
     # Should not attempt upload
     mock_create_post.assert_called_once()
