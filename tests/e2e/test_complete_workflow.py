@@ -259,12 +259,11 @@ def test_job_failure_and_retry(mock_post, mock_get, test_env):
     cats_end = Mock(status_code=200, json=lambda: [])
     mock_get.side_effect = [conn, slug, cats, cats_end, conn, slug, cats, cats_end]
 
-    # First call: timeout (will trigger retry)
-    mock_post.side_effect = [
-        Mock(status_code=500),  # Server error
-        Mock(status_code=201, json=lambda: {"id": 123}),  # Success on retry
-        Mock(status_code=201, json=lambda: {"id": 456, "link": "https://test.com/post/"}),
-    ]
+    # First attempt: media OK, post fails(500). Retry: media OK, post OK
+    media_ok = Mock(status_code=201, json=lambda: {"id": 123, "source_url": "https://test.com/img.jpg"})
+    post_fail = Mock(status_code=500)
+    post_ok = Mock(status_code=201, json=lambda: {"id": 456, "link": "https://test.com/post/", "slug": "blog-automation-guide"})
+    mock_post.side_effect = [media_ok, post_fail, media_ok, post_ok]
 
     zip_path = create_sample_zip(test_env["inbox"])
     job_id = enqueue_job(zip_path)

@@ -250,6 +250,8 @@ def test_publish_post_without_featured_image(
     mock_upload_ci.return_value = mock_post_data
     mock_create_post.return_value = {"id": 456, "link": "https://test.com/test-post/"}
 
+    publish_post(mock_post_data)
+
     # Should not attempt upload
     mock_create_post.assert_called_once()
     call_args = mock_create_post.call_args
