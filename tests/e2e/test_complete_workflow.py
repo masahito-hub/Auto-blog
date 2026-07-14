@@ -256,7 +256,6 @@ def test_job_failure_and_retry(mock_post, mock_get, test_env):
         status_code=200,
         json=lambda: [{"id": 1, "name": "Automation"}, {"id": 2, "name": "WordPress"}],
     )
-    cats_end = Mock(status_code=200, json=lambda: [])
     mock_get.side_effect = [conn, slug, cats, conn, slug, cats]
 
     # First attempt: media OK, post fails(500). Retry: media OK, post OK
