@@ -255,7 +255,8 @@ def test_publish_post_without_featured_image(
     # Should not attempt upload
     mock_create_post.assert_called_once()
     call_args = mock_create_post.call_args
-    assert call_args.kwargs["featured_media_id"] is None
+    # featured_media_id is passed as positional arg
+    assert call_args.args[1] is None
 
 
 class TestSlugDuplicateCheck:
