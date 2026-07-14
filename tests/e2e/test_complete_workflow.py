@@ -154,9 +154,12 @@ def test_publisher_creates_wordpress_post(mock_post, mock_get, test_env):
     # 1. Connection test, 2. Slug check (empty=not exists), 3. Categories
     conn_resp = Mock(status_code=200, json=lambda: {"name": "Test"})
     slug_resp = Mock(status_code=200, json=lambda: [])
-    cat_resp_automation = Mock(status_code=200, json=lambda: [{"id": 1, "name": "Automation"}])
-    cat_resp_wordpress = Mock(status_code=200, json=lambda: [{"id": 2, "name": "WordPress"}])
-    mock_get.side_effect = [conn_resp, slug_resp, cat_resp_automation, cat_resp_wordpress]
+    cats = Mock(
+        status_code=200,
+        json=lambda: [{"id": 1, "name": "Automation"}, {"id": 2, "name": "WordPress"}],
+    )
+    cats_end = Mock(status_code=200, json=lambda: [])
+    mock_get.side_effect = [conn_resp, slug_resp, cats, cats_end]
 
     # 2. Media upload
     media_response = Mock(
@@ -196,9 +199,12 @@ def test_complete_job_workflow(mock_post, mock_get, test_env):
     # Setup mocks: conn, slug check, categories
     conn = Mock(status_code=200, json=lambda: {"name": "Test"})
     slug = Mock(status_code=200, json=lambda: [])
-    cat1 = Mock(status_code=200, json=lambda: [{"id": 1, "name": "Automation"}])
-    cat2 = Mock(status_code=200, json=lambda: [{"id": 2, "name": "WordPress"}])
-    mock_get.side_effect = [conn, slug, cat1, cat2]
+    cats = Mock(
+        status_code=200,
+        json=lambda: [{"id": 1, "name": "Automation"}, {"id": 2, "name": "WordPress"}],
+    )
+    cats_end = Mock(status_code=200, json=lambda: [])
+    mock_get.side_effect = [conn, slug, cats, cats_end]
 
     media_response = Mock(
         status_code=201, json=lambda: {"id": 123, "source_url": "https://test.com/image.jpg"}
@@ -246,9 +252,12 @@ def test_job_failure_and_retry(mock_post, mock_get, test_env):
     # Setup: conn=success, slug=not exists, cat=found (URL-based dispatch)
     conn = Mock(status_code=200, json=lambda: {"name": "Test"})
     slug = Mock(status_code=200, json=lambda: [])
-    cat1 = Mock(status_code=200, json=lambda: [{"id": 1, "name": "Automation"}])
-    cat2 = Mock(status_code=200, json=lambda: [{"id": 2, "name": "WordPress"}])
-    mock_get.side_effect = [conn, slug, cat1, cat2, conn, slug, cat1, cat2]
+    cats = Mock(
+        status_code=200,
+        json=lambda: [{"id": 1, "name": "Automation"}, {"id": 2, "name": "WordPress"}],
+    )
+    cats_end = Mock(status_code=200, json=lambda: [])
+    mock_get.side_effect = [conn, slug, cats, cats_end, conn, slug, cats, cats_end]
 
     # First call: timeout (will trigger retry)
     mock_post.side_effect = [
@@ -323,9 +332,12 @@ def test_acceptance_criteria_sample_zip_to_draft(test_env):
         # Setup mocks (URL-based dispatch)
         conn = Mock(status_code=200, json=lambda: {"name": "User"})
         slug = Mock(status_code=200, json=lambda: [])
-        cat1 = Mock(status_code=200, json=lambda: [{"id": 1, "name": "Automation"}])
-        cat2 = Mock(status_code=200, json=lambda: [{"id": 2, "name": "WordPress"}])
-        mock_get.side_effect = [conn, slug, cat1, cat2]
+        cats = Mock(
+            status_code=200,
+            json=lambda: [{"id": 1, "name": "Automation"}, {"id": 2, "name": "WordPress"}],
+        )
+        cats_end = Mock(status_code=200, json=lambda: [])
+        mock_get.side_effect = [conn, slug, cats, cats_end]
         mock_post.side_effect = [
             Mock(status_code=201, json=lambda: {"id": 123}),  # Image
             Mock(
