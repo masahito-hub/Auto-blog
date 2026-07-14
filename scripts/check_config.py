@@ -46,10 +46,7 @@ def check_wordpress_url():
 def check_wordpress_api():
     """Check if WordPress REST API is accessible."""
     try:
-        response = requests.get(
-            f"{settings.wp_base_url}/wp-json/",
-            timeout=10
-        )
+        response = requests.get(f"{settings.wp_base_url}/wp-json/", timeout=10)
         accessible = response.status_code == 200
         if not accessible:
             print(f"   Response: {response.status_code}")
@@ -64,9 +61,7 @@ def check_wordpress_auth():
     try:
         auth = HTTPBasicAuth(settings.wp_user, settings.wp_app_password)
         response = requests.get(
-            f"{settings.wp_base_url}/wp-json/wp/v2/users/me",
-            auth=auth,
-            timeout=10
+            f"{settings.wp_base_url}/wp-json/wp/v2/users/me", auth=auth, timeout=10
         )
         authenticated = response.status_code == 200
         if not authenticated:
@@ -84,9 +79,7 @@ def check_wordpress_posts_permission():
     try:
         auth = HTTPBasicAuth(settings.wp_user, settings.wp_app_password)
         response = requests.options(
-            f"{settings.wp_base_url}/wp-json/wp/v2/posts",
-            auth=auth,
-            timeout=10
+            f"{settings.wp_base_url}/wp-json/wp/v2/posts", auth=auth, timeout=10
         )
         # Check if POST method is allowed
         allowed_methods = response.headers.get("Allow", "")
@@ -105,9 +98,7 @@ def check_wordpress_media_permission():
     try:
         auth = HTTPBasicAuth(settings.wp_user, settings.wp_app_password)
         response = requests.options(
-            f"{settings.wp_base_url}/wp-json/wp/v2/media",
-            auth=auth,
-            timeout=10
+            f"{settings.wp_base_url}/wp-json/wp/v2/media", auth=auth, timeout=10
         )
         allowed_methods = response.headers.get("Allow", "")
         can_upload = "POST" in allowed_methods or response.status_code == 200
@@ -127,13 +118,12 @@ def check_directories():
         ("work", settings.work_dir),
         ("published", settings.published_dir),
     ]:
-        exists = path.exists()
         writable = path.exists() and path.is_dir()
-        
+
         if not writable:
             print(f"   {name}: {path}")
             all_ok = False
-    
+
     return print_check("All directories are writable", all_ok)
 
 
@@ -142,12 +132,12 @@ def check_slack():
     if not settings.slack_webhook_url:
         print("ℹ️  Slack webhook not configured (optional)")
         return True
-    
+
     try:
         response = requests.post(
             settings.slack_webhook_url,
             json={"text": "Blog Pipeline configuration test"},
-            timeout=10
+            timeout=10,
         )
         works = response.status_code == 200
         if not works:
@@ -162,7 +152,7 @@ def main():
     """Run all configuration checks."""
     print("\n🔍 Blog Pipeline Configuration Check\n")
     print("=" * 50)
-    
+
     checks = [
         check_config_loaded(),
         check_wordpress_url(),
@@ -173,9 +163,9 @@ def main():
         check_directories(),
         check_slack(),
     ]
-    
+
     print("\n" + "=" * 50)
-    
+
     if all(checks):
         print("\n🎉 All checks passed! Your environment is ready.\n")
         print("Next steps:")
