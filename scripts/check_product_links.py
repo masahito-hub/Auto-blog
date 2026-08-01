@@ -172,26 +172,37 @@ def classify(original, final_url, status, err=None):
 
 
 def check_url(url):
-    """HEADを試し、拒否されたらGETへフォールバック"""
+    """HEADで試し、確定できない場合はGETで再確認する
+
+    多くのリダイレクタ・ASPはHEADを正しく実装していないため、
+    HEADの結果だけで判定すると実行ごとにブレる（#8）。
+    HEADは200が返った場合のみ信用し、それ以外はGETで確認する。
+    """
     hdr = {"User-Agent": UA, "Accept": "*/*"}
+    last = None
     for method in ("HEAD", "GET"):
         req = urllib.request.Request(url, method=method, headers=hdr)
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                if method == "HEAD" and r.status != 200:
+                    continue
                 return {"status": r.status, "final": r.url,
                         "ctype": r.headers.get("Content-Type", ""),
                         "err": None}
         except urllib.error.HTTPError as e:
-            if method == "HEAD" and e.code in (403, 405, 501):
-                continue
-            return {"status": e.code, "final": getattr(e, "url", url),
+            last = {"status": e.code, "final": getattr(e, "url", url),
                     "ctype": "", "err": None}
-        except Exception as e:
             if method == "HEAD":
                 continue
-            return {"status": None, "final": None, "ctype": "",
+            return last
+        except Exception as e:
+            last = {"status": None, "final": None, "ctype": "",
                     "err": "%s: %s" % (type(e).__name__, str(e)[:60])}
-    return {"status": None, "final": None, "ctype": "", "err": "検査不能"}
+            if method == "HEAD":
+                continue
+            return last
+    return last or {"status": None, "final": None, "ctype": "",
+                    "err": "検査不能"}
 
 
 def is_image_url(url):
