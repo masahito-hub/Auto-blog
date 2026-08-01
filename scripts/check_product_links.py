@@ -33,8 +33,11 @@ import urllib.request
 
 
 WP_API = "https://guide.ketogenic.press/wp-json/wp/v2/posts"
-UA = ("Mozilla/5.0 (compatible; LinkChecker/1.0; "
-      "+https://guide.ketogenic.press/)")
+# ⚠️ ボット風UAだとAmazonが実ステータスを隠して500を返し、
+#    死んだ商品（実際は404）を「一時障害」と誤判定する（#8）。
+#    自サイトのリンク健全性確認のため、通常のブラウザ相当UAを用いる。
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 TIMEOUT = 20
 SLEEP = 0.7
 
@@ -178,7 +181,7 @@ def check_url(url):
     HEADの結果だけで判定すると実行ごとにブレる（#8）。
     HEADは200が返った場合のみ信用し、それ以外はGETで確認する。
     """
-    hdr = {"User-Agent": UA, "Accept": "*/*"}
+    hdr = {"User-Agent": UA, "Accept": "*/*", "Accept-Language": "ja"}
     last = None
     for method in ("HEAD", "GET"):
         req = urllib.request.Request(url, method=method, headers=hdr)
