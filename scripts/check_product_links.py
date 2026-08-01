@@ -23,6 +23,7 @@ WordPress の全公開記事から外部リンク・画像URLを抽出し、到�
 """
 import argparse
 import json
+from html import unescape as _unescape
 import re
 import sys
 import time
@@ -122,7 +123,8 @@ def extract_urls(html):
     """href / src から検査対象ホストのURLだけを抜き出す"""
     found = []
     for m in re.finditer(r'(?:href|src)=["\']([^"\']+)["\']', html):
-        u = m.group(1).strip()
+        # HTMLエスケープを戻す。&amp; のまま検査すると誤検知になる（#8）
+        u = _unescape(m.group(1).strip())
         if u.startswith("//"):
             u = "https:" + u
         if not u.startswith("http"):
@@ -244,7 +246,13 @@ def self_test():
     if len(extract_urls(html)) != 2:
         fails.append(("extract_urls", "対象2件のはず", len(extract_urls(html))))
 
-    total = 12
+    # HTMLエスケープが戻ること（&amp; のまま検査すると誤検知になる）
+    esc = '<a href="https://www24.a8.net/svt/bgt?aid=1&amp;wid=004">x</a>'
+    got = extract_urls(esc)
+    if not got or "&amp;" in got[0]:
+        fails.append(("unescape", "&amp; が残っている", got[:1]))
+
+    total = 13
     if fails:
         for f in fails:
             print("FAIL %s | %s | %s" % f)
